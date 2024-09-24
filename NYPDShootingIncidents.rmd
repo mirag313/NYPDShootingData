@@ -1,0 +1,197 @@
+---
+title: "NYPD Shooting Incidents"
+author: "Mira Ghazali"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, warning = FALSE)
+```
+
+# NYPD Shootings Report
+
+
+In this project, we will explore the city of New York's crime data and the potential correlations that lie within. We begin by importing the data directly from a trusted government website. Specifically, the goal is to magnify the patterns associated with crime rates in the different NYC boroughs, as well as the age groups that are most affected.
+
+
+```{r import data}
+library(tidyverse)
+
+shooting_data <- read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+shooting_data
+```
+
+At initial glance, the data seems messy and full of extra information. To make this dataset easier to work with, let's tidy the data a bit. Here we remove extraneous data, such as positional information and specific location details, as we won't be using them in our analysis. Additionally, we would like to have any empty data report as one value (NA), rather than having multiple indicators (null, none, etc.). 
+
+```{r tidy data}
+shooting_data <- shooting_data %>% 
+                select(INCIDENT_KEY:VIC_RACE) %>%
+                mutate(OCCUR_DATE = mdy(OCCUR_DATE)) %>%
+                select(-c(JURISDICTION_CODE, LOC_OF_OCCUR_DESC, LOCATION_DESC, LOC_CLASSFCTN_DESC)) %>%
+                mutate(across(c(PERP_AGE_GROUP, PERP_SEX, PERP_RACE), na_if, "(null)"))
+
+
+shooting_data
+
+```
+
+##  Crime affecting the 18-24 age group in each NYC borough. 
+
+Since I personally fall into the 18-24 age group, naturally my first question was how this age group is affected by crime. These are the youngest adults in our society, making them an interesting group to zoom in on; for a young person looking to move to NYC, which borough would be safest to move to? 
+
+```{r crime affecting ages 18-24}
+
+crime_by_boro <- shooting_data %>% 
+  filter(VIC_AGE_GROUP == "18-24") %>%
+  group_by(BORO) %>%
+  count(VIC_AGE_GROUP) %>%
+  mutate(CRIME_COUNT = n) %>%
+  select(BORO, CRIME_COUNT) 
+
+summary(shooting_data$OCCUR_DATE)
+
+ggplot(crime_by_boro, aes(x = crime_by_boro$BORO, y = crime_by_boro$CRIME_COUNT)) + 
+  ggtitle("Crime Count by NYC Borough affecting ages 18-24") + 
+  xlab("Borough") + 
+  ylab("Crime Count") + 
+  geom_col(fill = "#CC9900")
+
+
+```
+The bar graph above reveals that the most crime affecting 18-24 year olds occurs in Brooklyn, with the least in Staten Island. However, we must keep in mind the socioeconomic factors that drive young people to move into areas such as Brooklyn or the Bronx. 
+
+To expand on that thought further, let's take a closer look at how crime affects all age groups in each borough. Here, I would expect a somewhat even distribution among all the age groups, given that anyone can be a victim to a crime at any time. 
+
+## Crime affecting each age group, by NYC borough. 
+
+```{r crime affecting all age groups}
+
+total_crime_by_boro <- shooting_data %>% 
+  group_by(BORO, VIC_AGE_GROUP) %>%
+  filter((VIC_AGE_GROUP != "1022")) %>%
+  count(VIC_AGE_GROUP) %>%
+  mutate(CRIME_COUNT = n) %>%
+  select(BORO, CRIME_COUNT, VIC_AGE_GROUP) 
+
+ggplot(total_crime_by_boro, aes(fill=total_crime_by_boro$VIC_AGE_GROUP, y=total_crime_by_boro$CRIME_COUNT, x= total_crime_by_boro$BORO)) + 
+  geom_bar(position="stack", stat="identity") + 
+  ggtitle("Crime Count by NYC Borough since 2006") + 
+  xlab("Borough") + 
+  ylab("Crime Count") + 
+  scale_fill_discrete(name = "Victim Age Groups")
+
+
+```
+Even with all other age groups factored in, the relative crime between each borough stays proportionate. That being said, we can see that by far the largest age groups affected by crime in NYC are the 18-24 and 25-44 groups, across all boroughs. This is a bit surprising to me as I would've expected our more vulnerable members of society, such as the <18 and 65+ age groups, to be the most affected. This may be due to young adults often leaving their homes more for work, leisure, entertainment, etc..
+
+This crime data involves crime all of kinds, both violent and non-violent; I would like to take a closer look on the more serious crimes in this data set, such as murder (indicated by the statistical murder flag in the data). Let's see the same visualization as above, but only the crimes involving murders. 
+
+
+
+## **Murder** rate affecting each age group, by NYC borough. 
+
+```{r murders affecting age groups}
+
+murder_crime_by_boro <- shooting_data %>% 
+  group_by(BORO, VIC_AGE_GROUP) %>%
+  filter((VIC_AGE_GROUP != "1022")) %>%
+  filter(STATISTICAL_MURDER_FLAG == TRUE) %>%
+  count(VIC_AGE_GROUP) %>%
+  mutate(CRIME_COUNT = n) %>%
+  select(BORO, CRIME_COUNT, VIC_AGE_GROUP) 
+
+ggplot(murder_crime_by_boro, aes(fill=murder_crime_by_boro$VIC_AGE_GROUP, y=murder_crime_by_boro$CRIME_COUNT, x= murder_crime_by_boro$BORO)) + 
+  geom_bar(position="stack", stat="identity") + 
+  ggtitle("Murder Count by NYC Borough since 2006") + 
+  xlab("Borough") + 
+  ylab("Crime Count") + 
+  scale_fill_discrete(name = "Victim Age Groups")
+
+```
+Interestingly, the overall pattern across boroughs as well as the general distribution of age groups still hold. This would imply that regardless of the severity of the crime, Brooklyn and the Bronx still have the highest crime rates in all of NYC. 
+
+To get a better perspective, let's zoom out a bit and look at the number of murders across all of NYC, regardless of age groups. 
+
+## Murder rate for all of NYC, all age groups. 
+
+```{r nyc murder rate}
+
+murders <- shooting_data %>%
+  filter(STATISTICAL_MURDER_FLAG == TRUE) %>%
+  group_by(OCCUR_DATE, BORO) %>%
+  count(STATISTICAL_MURDER_FLAG) %>%
+  mutate(MURDER_COUNT = n) %>%
+  select(OCCUR_DATE, MURDER_COUNT, BORO)
+
+ggplot(murders, aes(x=murders$OCCUR_DATE, y=murders$MURDER_COUNT)) + 
+  geom_point(size = 1) + 
+  labs(x="Murder Date", y="Number of Murders")
+
+
+```
+
+The above plot does not give us much information at a glance -- as expected, most days would have 1-3 murders in NYC. To extract some more meaning, let's focus in on top section of the plot, representing the days with the highest murder counts. 
+
+## Top 10 deadliest days in NYC since 2006
+
+
+```{r deadliest days}
+deadliest_days <- shooting_data %>%
+  filter(STATISTICAL_MURDER_FLAG == TRUE) %>%
+  group_by(OCCUR_DATE) %>%
+  count(STATISTICAL_MURDER_FLAG) %>%
+  mutate(MURDER_COUNT = n) %>%
+  arrange(desc(MURDER_COUNT)) %>%
+  select(OCCUR_DATE, MURDER_COUNT) 
+
+deadliest_10days <- head(deadliest_days, 10)
+
+ggplot(deadliest_10days, aes(x=deadliest_10days$OCCUR_DATE, y=deadliest_10days$MURDER_COUNT)) + 
+  geom_line(color="blue",size=1) + 
+  labs(x="Murder Date", y="Number of Murders") + 
+  ggtitle("Top 10 Deadliest Days in NYC") + 
+  geom_point(color="black", size=3)
+
+```
+
+While most days will only have 1-3 murders, the dates shown above are the most consequential. When focusing on the top 10 deadliest days in NYC, it's much easier to see a clear pattern; we see a somewhat positive linear trend. This would mean that as time goes by, the largest number of murders in a single day is increasing. With this, we can model our data to understand how the most violent days may potentially increase to in the future.
+
+
+## Modeling the top 10 deadliest days in NYC
+
+```{r modeling}
+mod <- lm(deadliest_10days$MURDER_COUNT ~ deadliest_10days$OCCUR_DATE, data = deadliest_10days)
+
+pred <- predict(mod)
+
+deadliest_10days$model <- pred
+
+ggplot(deadliest_10days, aes(x=deadliest_10days$OCCUR_DATE, y=deadliest_10days$MURDER_COUNT)) + 
+  geom_line(color="blue",size=1) + 
+  labs(x="Murder Date",y="Number of Murders") + 
+  ggtitle("Top 10 Deadliest Days in NYC") + 
+  geom_point(color="black",size=3) + 
+  geom_line(aes(x = deadliest_10days$OCCUR_DATE, y = deadliest_10days$model), 
+            color = "red", size = 1, 
+            arrow = arrow(length = unit(0.05, "npc")))
+
+```
+
+With an intercept of 1.67 and a slope of 0.00049, we can model our data with a linear model, shown in red above. Although it may be difficult to predict the exact dates of these occurrences, we can predict just how deadly the worst days can worsen.  
+
+## Conclusion
+
+After viewing the analysis of the NYPD shooting data set, it is important to keep in mind some sources of bias that may have arose. One big one that we cannot discount is how we viewed the crime rates for each borough; although it seems as though Brooklyn and the Bronx have the highest crime rates, we did not consider the population size of each respective borough as it was not given in our data set. Normalizing each borough to population, or perhaps looking at crime per capita, may have resulted in more accurate results of the crime rates in the NYC sectors. 
+
+There may also be bias that is inherit to the data set; this data was collected and reported by NYPD, an organization that is run humans, bound to make human errors. Many of these crimes could have been potentially misreported or under-reported depending on the officer at the scene and the data collector that inputs the reports. It is worth noting that many of the values in some fields, such as the age groups, are missing. In this report, I attempted to combat those missing values by only looking at the victim age group, which had more information. 
+
+Lastly, in the modeling portion of the analysis, I looked at the top 10 deadliest days and created a model according to those values. To improve on this, one can use more data from the the deadliest days in NYC, and fit it with perhaps a more complex model.
+
+Overall, through the use of visualization and analysis, we were successfully able to extract key information from this data set; this includes the difference in crime between each borough, the age groups that are most affected, and a closer look at some of NYC's most deadliest days since 2006. 
+
+
+
+
